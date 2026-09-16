@@ -196,7 +196,11 @@ async function getHoursData() {
 
     const result = await apiRequest("getHours");
 
-    return result;
+    if (!result.success) {
+        throw new Error(result.message);
+    }
+
+    return result.data;
 
 }
 
