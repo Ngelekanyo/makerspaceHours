@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>D-School Hours</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <main class="app">
+
+        <header class="header">
+            <div>
+                <p class="eyebrow">D-SCHOOL</p>
+                <h1>Hours Tracker</h1>
+            </div>
+
+            <div id="connectionStatus" class="status-dot">
+                ●
+            </div>
+        </header>
+
+
+        <!-- CURRENT SHIFT -->
+
+        <section class="card current-shift">
+
+            <p class="section-label">CURRENT SHIFT</p>
+
+            <div id="shiftStatus" class="shift-status">
+                Not clocked in
+            </div>
+
+            <div id="shiftTime" class="shift-time">
+                —
+            </div>
+
+            <button
+                id="clockButton"
+                class="primary-button"
+                onclick="toggleClock()">
+                CLOCK IN
+            </button>
+
+        </section>
+
+
+        <!-- TODAY -->
+
+        <section class="card today">
+
+            <p class="section-label">TODAY</p>
+
+            <div id="todayHours" class="big-number">
+                0h 00m
+            </div>
+
+        </section>
+
+
+        <!-- MANUAL ENTRY -->
+
+        <section class="card">
+
+            <div class="section-heading">
+                <div>
+                    <p class="section-label">MANUAL ENTRY</p>
+                    <p class="helper-text">
+                        Forgot to clock in or out?
+                    </p>
+                </div>
+            </div>
+
+            <button
+                class="secondary-button"
+                onclick="openManualEntry()">
+                + ADD HOURS MANUALLY
+            </button>
+
+        </section>
+
+
+        <!-- HISTORY -->
+
+        <section class="history">
+
+            <div class="section-heading">
+                <p class="section-label">RECENT HOURS</p>
+            </div>
+
+            <div id="hoursList">
+                <p class="empty-state">
+                    Loading hours...
+                </p>
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <!-- MANUAL ENTRY MODAL -->
+
+    <div id="manualModal" class="modal hidden">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h2>Add Hours</h2>
+
+                <button
+                    class="close-button"
+                    onclick="closeManualEntry()">
+                    ×
+                </button>
+            </div>
+
+
+            <label>
+                Date
+                <input
+                    type="date"
+                    id="manualDate">
+            </label>
+
+
+            <div class="time-row">
+
+                <label>
+                    Start
+                    <input
+                        type="time"
+                        id="manualStart">
+                </label>
+
+                <label>
+                    End
+                    <input
+                        type="time"
+                        id="manualEnd">
+                </label>
+
+            </div>
+
+
+            <label>
+                Description
+                <textarea
+                    id="manualDescription"
+                    placeholder="What did you work on?"></textarea>
+            </label>
+
+
+            <button
+                class="primary-button"
+                onclick="submitManualHours()">
+                SUBMIT HOURS
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <script src="app.js"></script>
+
+</body>
+
+</html>
