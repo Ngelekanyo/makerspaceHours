@@ -71,19 +71,17 @@ function apiRequest(action, data = {}) {
         }, 15000);
 
 
-        window[callbackName] = function(result) {
+window[callbackName] = function(result) {
 
-            if (finished) return;
+    console.log("JSONP CALLBACK RECEIVED:", result);
 
-            finished = true;
+    clearTimeout(timeout);
 
-            clearTimeout(timeout);
+    cleanup();
 
-            cleanup();
+    resolve(result);
 
-            resolve(result);
-
-        };
+};
 
 
         script.onload = function() {
