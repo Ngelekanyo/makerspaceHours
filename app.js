@@ -32,28 +32,92 @@ document.addEventListener("DOMContentLoaded", () => {
    API REQUEST
    ========================================================= */
 
-async function apiRequest(action, data = {}) {
 
-    const response = await fetch(API_URL, {
+function apiRequest(action, data = {}) {
 
-        method: "POST",
+    return new Promise((resolve, reject) => {
 
-        headers: {
-            "Content-Type": "text/plain;charset=utf-8"
-        },
+        const callbackName =
+            "apiCallback_" +
+            Date.now() +
+            "_" +
+            Math.floor(Math.random() * 1000);
 
-        body: JSON.stringify({
+
+        const params = new URLSearchParams({
+
             action,
+
+            callback: callbackName,
+
             ...data
-        })
+
+        });
+
+
+        const script =
+            document.createElement("script");
+
+
+        const timeout =
+            setTimeout(() => {
+
+                cleanup();
+
+                reject(
+                    new Error(
+                        "Request timed out."
+                    )
+                );
+
+            }, 10000);
+
+
+        window[callbackName] = function(result) {
+
+            clearTimeout(timeout);
+
+            cleanup();
+
+            resolve(result);
+
+        };
+
+
+        script.onerror = function() {
+
+            clearTimeout(timeout);
+
+            cleanup();
+
+            reject(
+                new Error(
+                    "Could not connect to the Hours Tracker backend."
+                )
+            );
+
+        };
+
+
+        script.src =
+            `${API_URL}?${params.toString()}`;
+
+
+        document.body.appendChild(script);
+
+
+        function cleanup() {
+
+            delete window[callbackName];
+
+            if (script.parentNode) {
+                script.parentNode.removeChild(script);
+            }
+
+        }
 
     });
 
-    if (!response.ok) {
-        throw new Error("Network request failed.");
-    }
-
-    return await response.json();
 }
 
 
