@@ -1,32 +1,30 @@
 /* =========================================================
    D-SCHOOL HOURS TRACKER
-   Frontend controller — Step 1
-   Local shift state + resilient UI
+   FRONTEND CONTROLLER
+   V1
    ========================================================= */
-
-const API_URL =
-    "https://script.google.com/macros/s/AKfycbxgTLioQ43o5K76XT6LKic0vhyt_7Uv4frFNV4WC6Ma_LZkMxFiVIggWuMLiSm065MP3w/exec";
-
-const ACTIVE_SHIFT_KEY = "dschool_active_shift";
-
-let activeShift = null;
-let timerInterval = null;
-let isRequesting = false;
 
 
 /* =========================================================
-   INITIALISE
+   CONFIGURATION
+   ========================================================= */
+
+const API_URL =
+    "https://script.google.com/a/macros/dschool.org.za/s/AKfycbxgTLioQ43o5K76XT6LKic0vhyt_7Uv4frFNV4WC6Ma_LZkMxFiVIggWuMLiSm065MP3w/exec";
+
+
+/* =========================================================
+   STARTUP
    ========================================================= */
 
 document.addEventListener("DOMContentLoaded", () => {
+
     setConnectionStatus("connecting");
 
-    restoreLocalShift();
+    loadHours();
+
     setDefaultManualDate();
 
-    // Load server data in the background.
-    // The UI does NOT wait for this.
-    loadHoursInBackground();
 });
 
 
@@ -34,7 +32,9 @@ document.addEventListener("DOMContentLoaded", () => {
    API REQUEST
    ========================================================= */
 
+
 function apiRequest(action, data = {}) {
+
     return new Promise((resolve, reject) => {
 
         const callbackName =
@@ -43,30 +43,51 @@ function apiRequest(action, data = {}) {
             "_" +
             Math.floor(Math.random() * 1000);
 
+
         const params = new URLSearchParams({
+
             action,
+
             callback: callbackName,
+
             ...data
+
         });
 
-        const script = document.createElement("script");
 
-        const timeout = setTimeout(() => {
-            cleanup();
+        const script =
+            document.createElement("script");
 
-            reject(
-                new Error("Request timed out.")
-            );
-        }, 10000);
+
+        const timeout =
+            setTimeout(() => {
+
+                cleanup();
+
+                reject(
+                    new Error(
+                        "Request timed out."
+                    )
+                );
+
+            }, 10000);
+
 
         window[callbackName] = function(result) {
+
             clearTimeout(timeout);
+
             cleanup();
+
             resolve(result);
+
         };
 
+
         script.onerror = function() {
+
             clearTimeout(timeout);
+
             cleanup();
 
             reject(
@@ -74,500 +95,186 @@ function apiRequest(action, data = {}) {
                     "Could not connect to the Hours Tracker backend."
                 )
             );
+
         };
+
 
         script.src =
             `${API_URL}?${params.toString()}`;
 
+
         document.body.appendChild(script);
 
+
         function cleanup() {
+
             delete window[callbackName];
 
             if (script.parentNode) {
                 script.parentNode.removeChild(script);
             }
+
         }
+
     });
+
 }
 
 
 /* =========================================================
-   CLOCK TOGGLE
+   CLOCK IN / OUT
    ========================================================= */
 
 async function toggleClock() {
 
-    if (isRequesting) {
-        return;
-    }
-
-    isRequesting = true;
-
-    const button =
-        document.getElementById("clockButton");
+    const button = document.getElementById("clockButton");
 
     button.disabled = true;
 
     try {
 
+        const hours = await getHoursData();
+
+        const activeShift = hours.find(
+            entry => !entry.endTime
+        );
+
+
         if (activeShift) {
 
-            await clockOut();
+            const result = await apiRequest("clockOut");
+
+            if (!result.success) {
+                throw new Error(result.message);
+            }
+
+            alert(
+                `Clocked out.\n\nHours worked: ${formatHours(result.hours)}`
+            );
 
         } else {
 
-            await clockIn();
+            const result = await apiRequest(
+                "clockIn",
+                {
+                    description: ""
+                }
+            );
+
+            if (!result.success) {
+                throw new Error(result.message);
+            }
+
+            alert("Clocked in successfully.");
 
         }
+
+        await loadHours();
 
     } catch (error) {
 
         console.error(error);
 
-        showMessage(
-            error.message ||
-            "Something went wrong."
+        alert(
+            "Something went wrong:\n\n" +
+            error.message
         );
 
     } finally {
 
-        isRequesting = false;
+        button.disabled = false;
 
-        updateClockButton();
     }
 }
 
 
 /* =========================================================
-   CLOCK IN
+   LOAD HOURS
    ========================================================= */
 
-async function clockIn() {
+async function getHoursData() {
 
-    const description =
-        prompt(
-            "What are you working on? (Optional)"
-        );
-
-    // User cancelled the prompt.
-    if (description === null) {
-        return;
-    }
-
-    const result =
-        await apiRequest(
-            "clockIn",
-            {
-                description
-            }
-        );
+    const result = await apiRequest("getHours");
 
     if (!result.success) {
         throw new Error(result.message);
     }
 
-    /*
-     * Use the server timestamp.
-     * This means the official start time
-     * comes from Google, not the user's PC.
-     */
+    return result.data;
 
-    const startTime =
-        new Date(result.time);
-
-    activeShift = {
-        id: result.id,
-        startTime: startTime.toISOString(),
-        description
-    };
-
-    saveLocalShift();
-
-    startLocalTimer();
-    updateCurrentShiftUI();
-
-    showMessage(
-        "Clocked in successfully."
-    );
-
-    setConnectionStatus("connected");
-}
-
-
-/* =========================================================
-   CLOCK OUT
-   ========================================================= */
-
-async function clockOut() {
-
-    const result =
-        await apiRequest("clockOut");
-
-    if (!result.success) {
-        throw new Error(result.message);
-    }
-
-    /*
-     * Clear local state only after the
-     * server confirms the clock-out.
-     */
-
-    activeShift = null;
-
-    clearLocalShift();
-    stopLocalTimer();
-
-    updateCurrentShiftUI();
-
-    showMessage(
-        `Clocked out — ${formatHours(result.hours)} recorded.`
-    );
-
-    setConnectionStatus("connected");
-
-    /*
-     * Refresh the dashboard AFTER clock-out.
-     * This happens once, not continuously.
-     */
-
-    await loadHours();
-}
-
-
-/* =========================================================
-   LOCAL SHIFT STORAGE
-   ========================================================= */
-
-function saveLocalShift() {
-
-    if (!activeShift) {
-        return;
-    }
-
-    localStorage.setItem(
-        ACTIVE_SHIFT_KEY,
-        JSON.stringify(activeShift)
-    );
-}
-
-
-function restoreLocalShift() {
-
-    const saved =
-        localStorage.getItem(
-            ACTIVE_SHIFT_KEY
-        );
-
-    if (!saved) {
-        updateCurrentShiftUI();
-        return;
-    }
-
-    try {
-
-        activeShift =
-            JSON.parse(saved);
-
-        if (
-            !activeShift ||
-            !activeShift.startTime
-        ) {
-            throw new Error(
-                "Invalid saved shift."
-            );
-        }
-
-        startLocalTimer();
-        updateCurrentShiftUI();
-
-    } catch (error) {
-
-        console.error(
-            "Could not restore local shift:",
-            error
-        );
-
-        clearLocalShift();
-        activeShift = null;
-
-        updateCurrentShiftUI();
-    }
-}
-
-
-function clearLocalShift() {
-
-    localStorage.removeItem(
-        ACTIVE_SHIFT_KEY
-    );
-}
-
-
-/* =========================================================
-   LOCAL TIMER
-   ========================================================= */
-
-function startLocalTimer() {
-
-    stopLocalTimer();
-
-    updateShiftTimer();
-
-    timerInterval =
-        setInterval(
-            updateShiftTimer,
-            1000
-        );
-}
-
-
-function stopLocalTimer() {
-
-    if (timerInterval) {
-
-        clearInterval(
-            timerInterval
-        );
-
-        timerInterval = null;
-    }
-}
-
-
-function updateShiftTimer() {
-
-    if (!activeShift) {
-        return;
-    }
-
-    const start =
-        new Date(
-            activeShift.startTime
-        );
-
-    const now =
-        new Date();
-
-    const milliseconds =
-        now - start;
-
-    const seconds =
-        Math.max(
-            0,
-            Math.floor(
-                milliseconds / 1000
-            )
-        );
-
-    const hours =
-        Math.floor(
-            seconds / 3600
-        );
-
-    const minutes =
-        Math.floor(
-            (seconds % 3600) / 60
-        );
-
-    const secs =
-        seconds % 60;
-
-    const shiftTime =
-        document.getElementById(
-            "shiftTime"
-        );
-
-    if (shiftTime) {
-
-        shiftTime.textContent =
-            `${pad(hours)}h ` +
-            `${pad(minutes)}m ` +
-            `${pad(secs)}s`;
-    }
-}
-
-
-function pad(number) {
-
-    return String(number)
-        .padStart(2, "0");
-}
-
-
-/* =========================================================
-   CURRENT SHIFT UI
-   ========================================================= */
-
-function updateCurrentShiftUI() {
-
-    const status =
-        document.getElementById(
-            "shiftStatus"
-        );
-
-    const shiftTime =
-        document.getElementById(
-            "shiftTime"
-        );
-
-    const button =
-        document.getElementById(
-            "clockButton"
-        );
-
-    if (!status || !shiftTime || !button) {
-        return;
-    }
-
-    if (activeShift) {
-
-        status.textContent =
-            "Currently working";
-
-        status.classList.add(
-            "active"
-        );
-
-        button.textContent =
-            "CLOCK OUT";
-
-        button.classList.add(
-            "clocked-in"
-        );
-
-        updateShiftTimer();
-
-    } else {
-
-        status.textContent =
-            "Not clocked in";
-
-        status.classList.remove(
-            "active"
-        );
-
-        shiftTime.textContent =
-            "—";
-
-        button.textContent =
-            "CLOCK IN";
-
-        button.classList.remove(
-            "clocked-in"
-        );
-    }
-}
-
-
-function updateClockButton() {
-
-    const button =
-        document.getElementById(
-            "clockButton"
-        );
-
-    if (!button) {
-        return;
-    }
-
-    button.disabled =
-        isRequesting;
-
-    updateCurrentShiftUI();
-}
-
-
-/* =========================================================
-   LOAD SERVER DATA
-   ========================================================= */
-
-async function loadHoursInBackground() {
-
-    try {
-
-        await loadHours();
-
-        setConnectionStatus(
-            "connected"
-        );
-
-    } catch (error) {
-
-        console.error(error);
-
-        /*
-         * Do NOT destroy the local shift state
-         * if the API happens to be unavailable.
-         */
-
-        setConnectionStatus(
-            "error"
-        );
-    }
 }
 
 
 async function loadHours() {
 
-    const hours =
-        await getHoursData();
+    try {
 
-    updateTodayTotal(hours);
+        const hours = await getHoursData();
 
-    renderHistory(hours);
+        setConnectionStatus("connected");
 
-    /*
-     * Only use server data to recover
-     * from a missing local state.
-     *
-     * We don't overwrite a known local
-     * active shift here.
-     */
+        updateCurrentShift(hours);
 
-    if (!activeShift) {
+        updateTodayTotal(hours);
 
-        const serverActiveShift =
-            hours.find(
-                entry =>
-                    !entry.endTime
-            );
+        renderHistory(hours);
 
-        if (serverActiveShift) {
+    } catch (error) {
 
-            activeShift = {
-                id: serverActiveShift.id,
-                startTime:
-                    new Date(
-                        serverActiveShift.startTime
-                    ).toISOString(),
-                description:
-                    serverActiveShift.description || ""
-            };
+        console.error(error);
 
-            saveLocalShift();
+        setConnectionStatus("error");
 
-            startLocalTimer();
-            updateCurrentShiftUI();
-        }
+        document.getElementById("hoursList").innerHTML = `
+            <p class="empty-state">
+                Could not load hours.
+            </p>
+        `;
+
     }
+
 }
 
 
-async function getHoursData() {
+/* =========================================================
+   CURRENT SHIFT
+   ========================================================= */
 
-    const result =
-        await apiRequest(
-            "getHours"
-        );
+function updateCurrentShift(hours) {
 
-    if (!result.success) {
-        throw new Error(
-            result.message
-        );
+    const activeShift = hours.find(
+        entry => !entry.endTime
+    );
+
+    const status =
+        document.getElementById("shiftStatus");
+
+    const time =
+        document.getElementById("shiftTime");
+
+    const button =
+        document.getElementById("clockButton");
+
+
+    if (activeShift) {
+
+        status.textContent = "Currently clocked in";
+
+        time.textContent =
+            `Started at ${formatTime(activeShift.startTime)}`;
+
+        button.textContent = "CLOCK OUT";
+
+    } else {
+
+        status.textContent = "Not clocked in";
+
+        time.textContent = "—";
+
+        button.textContent = "CLOCK IN";
+
     }
 
-    return result.data;
 }
 
 
@@ -577,61 +284,37 @@ async function getHoursData() {
 
 function updateTodayTotal(hours) {
 
-    const today =
-        new Date()
-            .toISOString()
-            .split("T")[0];
+    const today = new Date();
+
+    const todayString =
+        today.toISOString().split("T")[0];
+
 
     let total = 0;
+
 
     hours.forEach(entry => {
 
         const entryDate =
-            formatDateForComparison(
-                entry.date
-            );
+            new Date(entry.date);
+
+        const entryDateString =
+            entryDate.toISOString().split("T")[0];
+
 
         if (
-            entryDate === today &&
+            entryDateString === todayString &&
             entry.hours
         ) {
-            total +=
-                Number(entry.hours);
+            total += Number(entry.hours);
         }
+
     });
 
-    /*
-     * Include the currently running
-     * shift in today's live total.
-     */
 
-    if (activeShift) {
+    document.getElementById("todayHours")
+        .textContent = formatHours(total);
 
-        const start =
-            new Date(
-                activeShift.startTime
-            );
-
-        const now =
-            new Date();
-
-        const liveHours =
-            (now - start) /
-            (1000 * 60 * 60);
-
-        total += liveHours;
-    }
-
-    const element =
-        document.getElementById(
-            "todayHours"
-        );
-
-    if (element) {
-
-        element.textContent =
-            formatHours(total);
-    }
 }
 
 
@@ -642,43 +325,55 @@ function updateTodayTotal(hours) {
 function renderHistory(hours) {
 
     const container =
-        document.getElementById(
-            "hoursList"
-        );
+        document.getElementById("hoursList");
 
-    if (!container) {
+
+    if (!hours || hours.length === 0) {
+
+        container.innerHTML = `
+            <p class="empty-state">
+                No hours recorded yet.
+            </p>
+        `;
+
         return;
     }
 
-    const completed =
+
+    const completedHours =
         hours
-            .filter(
-                entry =>
-                    entry.endTime
-            )
+            .filter(entry => entry.endTime)
             .sort(
                 (a, b) =>
                     new Date(b.date) -
                     new Date(a.date)
-            )
-            .slice(0, 10);
+            );
 
-    if (!completed.length) {
 
-        container.innerHTML =
-            `<p class="empty-state">
-                No completed hours yet.
-            </p>`;
+    if (completedHours.length === 0) {
+
+        container.innerHTML = `
+            <p class="empty-state">
+                No completed shifts yet.
+            </p>
+        `;
 
         return;
     }
 
+
     container.innerHTML =
-        completed
+        completedHours
+            .slice(0, 10)
             .map(createHourEntry)
             .join("");
+
 }
 
+
+/* =========================================================
+   CREATE HISTORY ENTRY
+   ========================================================= */
 
 function createHourEntry(entry) {
 
@@ -686,47 +381,46 @@ function createHourEntry(entry) {
         formatDate(entry.date);
 
     const hours =
-        formatHours(
-            Number(entry.hours) || 0
-        );
+        formatHours(entry.hours);
 
     const description =
         entry.description ||
-        "Work session";
+        `${formatTime(entry.startTime)} → ${formatTime(entry.endTime)}`;
 
     const status =
-        (entry.status || "Pending")
-            .toLowerCase();
+        (entry.status || "Pending").toLowerCase();
+
 
     return `
         <div class="hour-entry">
 
-            <div class="hour-main">
+            <div>
 
-                <div class="hour-date">
+                <div class="entry-date">
                     ${date}
                 </div>
 
-                <div class="hour-description">
-                    ${escapeHtml(description)}
+                <div class="entry-description">
+                    ${description}
                 </div>
 
             </div>
 
-            <div class="hour-meta">
+            <div class="entry-right">
 
-                <div class="hour-total">
+                <div class="entry-hours">
                     ${hours}
                 </div>
 
-                <div class="badge ${status}">
+                <span class="badge ${status}">
                     ${entry.status}
-                </div>
+                </span>
 
             </div>
 
         </div>
     `;
+
 }
 
 
@@ -734,40 +428,63 @@ function createHourEntry(entry) {
    MANUAL ENTRY
    ========================================================= */
 
+function openManualEntry() {
+
+    document
+        .getElementById("manualModal")
+        .classList.remove("hidden");
+
+}
+
+
+function closeManualEntry() {
+
+    document
+        .getElementById("manualModal")
+        .classList.add("hidden");
+
+}
+
+
+function setDefaultManualDate() {
+
+    const dateInput =
+        document.getElementById("manualDate");
+
+    const today =
+        new Date().toISOString().split("T")[0];
+
+    dateInput.value = today;
+
+}
+
+
+/* =========================================================
+   SUBMIT MANUAL HOURS
+   ========================================================= */
+
 async function submitManualHours() {
 
     const date =
-        document.getElementById(
-            "manualDate"
-        ).value;
+        document.getElementById("manualDate").value;
 
     const startTime =
-        document.getElementById(
-            "manualStart"
-        ).value;
+        document.getElementById("manualStart").value;
 
     const endTime =
-        document.getElementById(
-            "manualEnd"
-        ).value;
+        document.getElementById("manualEnd").value;
 
     const description =
-        document.getElementById(
-            "manualDescription"
-        ).value;
+        document.getElementById("manualDescription").value;
 
-    if (
-        !date ||
-        !startTime ||
-        !endTime
-    ) {
 
-        showMessage(
-            "Please enter a date, start time and end time."
-        );
+    if (!date || !startTime || !endTime) {
+
+        alert("Please enter the date, start time and end time.");
 
         return;
     }
+
 
     try {
 
@@ -782,77 +499,38 @@ async function submitManualHours() {
                 }
             );
 
+
         if (!result.success) {
-            throw new Error(
-                result.message
-            );
+            throw new Error(result.message);
         }
+
+
+        alert(
+            `Hours added successfully.\n\nTotal: ${formatHours(result.hours)}`
+        );
+
+
+        document.getElementById("manualStart").value = "";
+        document.getElementById("manualEnd").value = "";
+        document.getElementById("manualDescription").value = "";
+
 
         closeManualEntry();
 
-        showMessage(
-            "Hours submitted successfully."
-        );
-
         await loadHours();
+
 
     } catch (error) {
 
         console.error(error);
 
-        showMessage(
+        alert(
+            "Could not add hours:\n\n" +
             error.message
         );
-    }
-}
 
-
-/* =========================================================
-   MODAL
-   ========================================================= */
-
-function openManualEntry() {
-
-    document
-        .getElementById(
-            "manualModal"
-        )
-        .classList.remove(
-            "hidden"
-        );
-}
-
-
-function closeManualEntry() {
-
-    document
-        .getElementById(
-            "manualModal"
-        )
-        .classList.add(
-            "hidden"
-        );
-}
-
-
-function setDefaultManualDate() {
-
-    const input =
-        document.getElementById(
-            "manualDate"
-        );
-
-    if (!input) {
-        return;
     }
 
-    const today =
-        new Date();
-
-    input.value =
-        today
-            .toISOString()
-            .split("T")[0];
 }
 
 
@@ -862,45 +540,38 @@ function setDefaultManualDate() {
 
 function setConnectionStatus(state) {
 
-    const element =
-        document.getElementById(
-            "connectionStatus"
-        );
+    const indicator =
+        document.getElementById("connectionStatus");
 
-    if (!element) {
-        return;
+
+    indicator.classList.remove(
+        "connected",
+        "error"
+    );
+
+
+    if (state === "connected") {
+
+        indicator.classList.add("connected");
+
+        indicator.title = "Connected";
+
     }
 
-    element.classList.remove(
-        "connected",
-        "error",
-        "connecting"
-    );
+    else if (state === "error") {
 
-    element.classList.add(
-        state
-    );
-}
+        indicator.classList.add("error");
 
+        indicator.title = "Connection error";
 
-/* =========================================================
-   MESSAGES
-   ========================================================= */
+    }
 
-function showMessage(message) {
+    else {
 
-    console.log(
-        "[D-SCHOOL HOURS]",
-        message
-    );
+        indicator.title = "Connecting...";
 
-    /*
-     * For now we use a browser notification.
-     * We can replace this with a proper
-     * in-app toast later.
-     */
+    }
 
-    alert(message);
 }
 
 
@@ -908,36 +579,36 @@ function showMessage(message) {
    FORMATTERS
    ========================================================= */
 
-function formatHours(hours) {
+function formatHours(decimalHours) {
 
-    hours =
-        Number(hours) || 0;
+    if (
+        decimalHours === null ||
+        decimalHours === undefined ||
+        isNaN(decimalHours)
+    ) {
+        return "0h 00m";
+    }
+
 
     const totalMinutes =
-        Math.round(
-            hours * 60
-        );
+        Math.round(Number(decimalHours) * 60);
 
-    const h =
-        Math.floor(
-            totalMinutes / 60
-        );
 
-    const m =
+    const hours =
+        Math.floor(totalMinutes / 60);
+
+    const minutes =
         totalMinutes % 60;
 
-    return `${h}h ${String(m).padStart(2, "0")}m`;
+
+    return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+
 }
 
 
-function formatDate(dateValue) {
+function formatDate(value) {
 
-    const date =
-        new Date(dateValue);
-
-    if (isNaN(date)) {
-        return "Unknown date";
-    }
+    const date = new Date(value);
 
     return date.toLocaleDateString(
         "en-ZA",
@@ -947,30 +618,27 @@ function formatDate(dateValue) {
             year: "numeric"
         }
     );
+
 }
 
 
-function formatDateForComparison(dateValue) {
+function formatTime(value) {
 
-    const date =
-        new Date(dateValue);
-
-    if (isNaN(date)) {
-        return "";
+    if (!value) {
+        return "—";
     }
 
-    return date
-        .toISOString()
-        .split("T")[0];
-}
+
+    const date = new Date(value);
 
 
-function escapeHtml(value) {
+    return date.toLocaleTimeString(
+        "en-ZA",
+        {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false
+        }
+    );
 
-    return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
 }
