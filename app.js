@@ -9,8 +9,7 @@
    CONFIGURATION
    ========================================================= */
 
-const API_URL =
-    "https://script.google.com/macros/s/AKfycbyTf7RqC7danMLSfEMTNRQIMYKiGJn5MVFYm3vYqqfrcvOz-jGJLl9UAIz1yOXLm3w/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycby5KKlWcQLctT8cjVVWihSrynoyp-qAai8z-GVkm8QpEdfwo7Jw0miyfA1bS4L1E4o/exec";
 
 
 /* =========================================================
