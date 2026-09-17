@@ -66,31 +66,30 @@ function apiRequest(action, data = {}) {
             cleanup();
 
             reject(
-                new Error("Request timed out.")
+                new Error(
+                    "Request timed out. The server may still have received the request."
+                )
             );
 
         }, 15000);
 
 
-window[callbackName] = function(result) {
+        window[callbackName] = function(result) {
 
-    console.log("JSONP CALLBACK RECEIVED:", result);
+            if (finished) return;
 
-    clearTimeout(timeout);
+            finished = true;
 
-    cleanup();
+            clearTimeout(timeout);
 
-    resolve(result);
+            cleanup();
 
-};
+            console.log(
+                `API SUCCESS [${action}]`,
+                result
+            );
 
-
-        script.onload = function() {
-
-            /*
-             * JSONP should execute the callback before onload.
-             * If it doesn't, the timeout will handle the failure.
-             */
+            resolve(result);
 
         };
 
