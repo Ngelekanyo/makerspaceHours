@@ -8,6 +8,7 @@
 /* =========================================================
    CONFIGURATION
    ========================================================= */
+console.log("D-SCHOOL HOURS APP V2 LOADED");
 
 const API_URL =
     "https://script.google.com/macros/s/AKfycbyTf7RqC7danMLSfEMTNRQIMYKiGJn5MVFYm3vYqqfrcvOz-jGJLl9UAIz1yOXLm3w/exec";
