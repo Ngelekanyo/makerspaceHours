@@ -216,16 +216,15 @@ async function toggleClock() {
 
     button.disabled = true;
 
-
     try {
 
         const activeShift =
             getActiveShift();
 
 
-        /* =========================
+        /* =====================================================
            CLOCK OUT
-           ========================= */
+           ===================================================== */
 
         if (activeShift) {
 
@@ -234,27 +233,7 @@ async function toggleClock() {
 
 
             if (!result.success) {
-
-                /*
-                 * If the backend says there is no active shift,
-                 * clear our local state so the two sides agree.
-                 */
-
-                if (
-                    result.message &&
-                    result.message
-                        .toLowerCase()
-                        .includes("not currently")
-                ) {
-                    clearActiveShift();
-                    stopLocalTimer();
-                    await loadHours();
-                }
-
-                throw new Error(
-                    result.message
-                );
-
+                throw new Error(result.message);
             }
 
 
@@ -270,56 +249,51 @@ async function toggleClock() {
 
             await loadHours();
 
-            return;
-
         }
 
 
-        /* =========================
+        /* =====================================================
            CLOCK IN
-           ========================= */
+           ===================================================== */
 
-        const result =
-            await apiRequest(
-                "clockIn",
-                {
-                    description: ""
-                }
+        else {
+
+            const result =
+                await apiRequest(
+                    "clockIn",
+                    {
+                        description: ""
+                    }
+                );
+
+
+            if (!result.success) {
+                throw new Error(result.message);
+            }
+
+
+            saveActiveShift(
+                result.time
             );
 
 
-        if (!result.success) {
-            throw new Error(result.message);
+            updateShiftDisplay(
+                new Date(result.time)
+            );
+
+
+            startLocalTimer();
+
+
+            alert(
+                "Clocked in successfully."
+            );
+
         }
 
+    }
 
-        /*
-         * Use the backend timestamp when available.
-         * This keeps the local timer aligned with the recorded shift.
-         */
-
-        const startTime =
-            result.time || new Date().toISOString();
-
-
-        saveActiveShift(startTime);
-
-        updateShiftDisplay(
-            new Date(startTime)
-        );
-
-        startLocalTimer();
-
-
-        alert(
-            "Clocked in successfully."
-        );
-
-
-        await loadHours();
-
-
-    } catch (error) {
+    catch (error) {
 
         console.error(error);
 
@@ -328,7 +302,9 @@ async function toggleClock() {
             error.message
         );
 
-    } finally {
+    }
+
+    finally {
 
         button.disabled = false;
 
